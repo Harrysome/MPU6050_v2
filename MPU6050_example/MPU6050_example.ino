@@ -7,6 +7,7 @@ const int sen = 0;   //the sensitivity from 0 ~ 6
 void setup() {///
   Serial.begin(9600);
   mpu.begin(addr);
+  mpu.calibrate();
 }
 
 void loop() {
@@ -16,17 +17,19 @@ void loop() {
   Serial.println(mpu.Xaxis());
   Serial.print("mpu Yaxis = ");
   Serial.println(mpu.Yaxis());
+  Serial.print("x offset = ");
+  Serial.print(mpu.x_offset());
+  Serial.print(", y offset = ");
+  Serial.println(mpu.y_offset());
   Serial.println("---------------------------------------------");
   delay(250);
   
-  /*
-  Serial.print("mpu accX = ");
-  Serial.println(mpu.accX());
-  Serial.print("mpu accY = ");
-  Serial.println(mpu.accY());
-  Serial.print("mpu accZ = ");
-  Serial.println(mpu.accZ());
-  Serial.println("---------------------------------------------");
-  delay(250);
-  */
+  // Serial.print("mpu accX = ");
+  // Serial.println(mpu.accX());
+  // Serial.print("mpu accY = ");
+  // Serial.println(mpu.accY());
+  // Serial.print("mpu accZ = ");
+  // Serial.println(mpu.accZ());
+  // Serial.println("---------------------------------------------");
+  // delay(250);
 }
