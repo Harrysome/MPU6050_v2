@@ -14,6 +14,8 @@ struct MPU6050 {
 	float accZ();
 	float x_offset();
 	float y_offset();
+	float kal_x();
+	float kal_y();
 };
 
 #endif
