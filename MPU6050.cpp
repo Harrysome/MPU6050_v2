@@ -6,28 +6,36 @@ int addr;
 float pi = 3.1415926;
 float accRate = 16384.0;
 float gRate = 131.0;
-int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0; //raw data
+int16_t ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0; // Raw data
 float accx, accy, accz;
-float x, y;      //angle
+float x, y;      // Angle
 float xoffset = 0, yoffset = 0;
+
+// Kalman filter variables
+float kalX = 0, kalY = 0;
+float P_x[2][2] = {{1, 0}, {0, 1}}; // Covariance matrix for X
+float P_y[2][2] = {{1, 0}, {0, 1}}; // Covariance matrix for Y
+float Q_angle = 0.003, Q_bias = 0.005, R_measure = 0.03; // Noise parameters
+float biasX = 0, biasY = 0;
+unsigned long lastTime;
 
 void MPU6050::begin(int add) {
     addr = add;
 
     Wire.begin();
-    Wire.beginTransmission(addr);   //sampling rate
+    Wire.beginTransmission(addr);   // Sampling rate
     Wire.write(0x19);
     Wire.write(0x07);
     Wire.endTransmission(true);
 
     Wire.begin();
-    Wire.beginTransmission(addr);   //clock select
+    Wire.beginTransmission(addr);   // Clock select
     Wire.write(0x6B);
     Wire.write(0x01);
     Wire.endTransmission(true);
 
     Wire.begin();
-    Wire.beginTransmission(addr);   //
+    Wire.beginTransmission(addr);
     Wire.write(0x6C);
     Wire.write(0x00);
     Wire.endTransmission(true);
@@ -62,16 +70,8 @@ void MPU6050::begin(int add) {
     Wire.write(0);
     Wire.endTransmission(true);
 
+    lastTime = millis();
 }
-
-// void MPU6050_Base::initialize() {
-//     setClockSource(MPU6050_CLOCK_PLL_XGYRO);
-//     setFullScaleGyroRange(MPU6050_GYRO_FS_250);
-//     setFullScaleAccelRange(MPU6050_ACCEL_FS_2);
-//     setSleepEnabled(false); // thanks to Jack Elston for pointing this one out!
-// }
-
-
 
 void MPU6050::read() {
     Wire.beginTransmission(addr);
@@ -86,20 +86,56 @@ void MPU6050::read() {
     gy = Wire.read() << 8 | Wire.read();
     gz = Wire.read() << 8 | Wire.read();
 
-    //accx = map(rx,min,max,-90,90); //設定分量在90~-90
-    //accy = map(ry,min,max,-90,90); //固定比例
-    //accz = map(rz,min,max,-90,90);
+    accx = ax / accRate;
+    accy = ay / accRate;
+    accz = az / accRate;
 
-    accx = (ax) / accRate;
-    accy = (ay) / accRate;
-    accz = (az) / accRate;
-
-    x = (atan(accy / accz) * 180.0 / pi) - xoffset; //取tan^-1 -> 角度
+    x = (atan(accy / accz) * 180.0 / pi) - xoffset; // Compute tilt angles
     y = (atan(accx / accz) * 180.0 / pi) - yoffset;
 
-    //if(x>180)x -= 360;
-    //if(y>180)y -= 360;
-    //if(z>180)z -= 360;
+    unsigned long now = millis();
+    float dt = (now - lastTime) / 1000.0; // Time interval
+    lastTime = now;
+
+    // Apply Kalman Filter for X-axis
+    float rateX = gx / gRate - biasX;
+    kalX += dt * rateX;
+    P_x[0][0] += dt * (dt * P_x[1][1] - P_x[0][1] - P_x[1][0] + Q_angle);
+    P_x[0][1] -= dt * P_x[1][1];
+    P_x[1][0] -= dt * P_x[1][1];
+    P_x[1][1] += Q_bias * dt;
+
+    float Sx = P_x[0][0] + R_measure;
+    float Kx[2] = {P_x[0][0] / Sx, P_x[1][0] / Sx};
+
+    float yx = x - kalX;
+    kalX += Kx[0] * yx;
+    biasX += Kx[1] * yx;
+
+    P_x[0][0] -= Kx[0] * P_x[0][0];
+    P_x[0][1] -= Kx[0] * P_x[0][1];
+    P_x[1][0] -= Kx[1] * P_x[0][0];
+    P_x[1][1] -= Kx[1] * P_x[0][1];
+
+    // Apply Kalman Filter for Y-axis
+    float rateY = gy / gRate - biasY;
+    kalY += dt * rateY;
+    P_y[0][0] += dt * (dt * P_y[1][1] - P_y[0][1] - P_y[1][0] + Q_angle);
+    P_y[0][1] -= dt * P_y[1][1];
+    P_y[1][0] -= dt * P_y[1][1];
+    P_y[1][1] += Q_bias * dt;
+
+    float Sy = P_y[0][0] + R_measure;
+    float Ky[2] = {P_y[0][0] / Sy, P_y[1][0] / Sy};
+
+    float yy = y - kalY;
+    kalY += Ky[0] * yy;
+    biasY += Ky[1] * yy;
+
+    P_y[0][0] -= Ky[0] * P_y[0][0];
+    P_y[0][1] -= Ky[0] * P_y[0][1];
+    P_y[1][0] -= Ky[1] * P_y[0][0];
+    P_y[1][1] -= Ky[1] * P_y[0][1];
 }
 
 void MPU6050::calibrate() {
@@ -119,6 +155,14 @@ float MPU6050::Xaxis() {
 
 float MPU6050::Yaxis() {
     return y;
+}
+
+float MPU6050::kal_x() {
+    return kalX;
+}
+
+float MPU6050::kal_y() {
+    return kalY;
 }
 
 float MPU6050::accX() {
